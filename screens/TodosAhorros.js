@@ -1,11 +1,12 @@
 import React, { useCallback, useState } from 'react';
 import { View, StyleSheet, FlatList } from 'react-native';
-import { Card, Text } from 'react-native-paper';
+import { Card, Text, HelperText } from 'react-native-paper';
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../supabase';
 
 export default function TodosAhorros() {
   const [ahorros, setAhorros] = useState([]);
+  const [error, setError] = useState('');
 
   // Recarga cada vez que la pantalla recibe el foco, no solo al montarse
   useFocusEffect(
@@ -19,11 +20,19 @@ export default function TodosAhorros() {
       .from('users')
       .select('*')
       .order('created_at', { ascending: false });
-    if (!error) setAhorros(data);
+    if (error) {
+      setError('No se pudieron cargar los ahorros: ' + error.message);
+    } else {
+      setError('');
+      setAhorros(data);
+    }
   };
 
   return (
     <View style={styles.container}>
+      <HelperText type="error" visible={error !== ''}>
+        {error}
+      </HelperText>
       <FlatList
         data={ahorros}
         keyExtractor={(item) => item.id.toString()}

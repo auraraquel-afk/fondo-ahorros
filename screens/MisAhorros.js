@@ -1,40 +1,72 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, FlatList } from 'react-native';
-import { TextInput, Button, Text, Card } from 'react-native-paper';
+import { TextInput, Button, Text, Card, HelperText } from 'react-native-paper';
 import { supabase } from '../supabase';
 
 export default function MisAhorros() {
   const [usuario, setUsuario] = useState('');
   const [monto, setMonto] = useState('');
   const [ahorros, setAhorros] = useState([]);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    if (usuario.trim() !== '') {
-      fetchAhorros();
+    const nombre = usuario.trim();
+    if (nombre === '') {
+      setAhorros([]);
+      return;
     }
+    // Espera a que se deje de escribir y descarta respuestas de nombres anteriores
+    let cancelado = false;
+    const timer = setTimeout(async () => {
+      const resultado = await fetchAhorros(nombre);
+      if (!cancelado) aplicarResultado(resultado);
+    }, 500);
+    return () => {
+      cancelado = true;
+      clearTimeout(timer);
+    };
   }, [usuario]);
 
-  const fetchAhorros = async () => {
-    const { data, error } = await supabase
+  const fetchAhorros = (nombre) =>
+    supabase
       .from('users')
       .select('*')
-      .eq('usuario', usuario)
+      .eq('usuario', nombre)
       .order('created_at', { ascending: false });
-    if (!error) setAhorros(data);
+
+  const aplicarResultado = ({ data, error }) => {
+    if (error) {
+      setError('No se pudieron cargar los ahorros: ' + error.message);
+    } else {
+      setError('');
+      setAhorros(data);
+    }
   };
 
   const addAhorro = async () => {
-    if (!usuario.trim() || !monto.trim()) return;
+    const nombre = usuario.trim();
+    // Acepta coma o punto como separador decimal
+    const valor = Number(monto.trim().replace(',', '.'));
+    if (!nombre) {
+      setError('Escribe un usuario.');
+      return;
+    }
+    if (!monto.trim() || !Number.isFinite(valor) || valor <= 0) {
+      setError('Escribe un monto válido mayor que 0.');
+      return;
+    }
     const { error } = await supabase
       .from('users')
-      .insert([{ usuario, monto: parseFloat(monto) }]);
-    if (!error) {
-      setMonto('');
-      fetchAhorros();
+      .insert([{ usuario: nombre, monto: valor }]);
+    if (error) {
+      setError('No se pudo guardar: ' + error.message);
+      return;
     }
+    setMonto('');
+    aplicarResultado(await fetchAhorros(nombre));
   };
 
-  const total = ahorros.reduce((sum, item) => sum + parseFloat(item.monto), 0);
+  const total = ahorros.reduce((sum, item) => sum + (Number(item.monto) || 0), 0);
 
   return (
     <View style={styles.container}>
@@ -51,11 +83,14 @@ export default function MisAhorros() {
         keyboardType="numeric"
         style={styles.input}
       />
+      <HelperText type="error" visible={error !== ''}>
+        {error}
+      </HelperText>
       <Button mode="contained" onPress={addAhorro} style={styles.button}>
         Guardar
       </Button>
 
-      <Text style={styles.total}>Total ahorrado: {total}</Text>
+      <Text style={styles.total}>Total ahorrado: ${total.toFixed(2)}</Text>
 
       <FlatList
         data={ahorros}
